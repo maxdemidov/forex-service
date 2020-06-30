@@ -4,10 +4,17 @@ import scala.concurrent.duration.FiniteDuration
 
 case class ApplicationConfig(
     http: HttpConfig,
+    frame: FrameConfig
 )
 
 case class HttpConfig(
     host: String,
     port: Int,
-    timeout: FiniteDuration
+    requestTimeout: FiniteDuration
+)
+
+case class FrameConfig(
+    host: String,
+    port: Int,
+    refreshTimeout: FiniteDuration
 )

@@ -1,8 +1,9 @@
 package forex.domain
 
 import cats.Show
+import forex.common.reflect.SubtypeToList
 
-sealed trait Currency
+sealed trait Currency extends Serializable
 
 object Currency {
   case object AUD extends Currency
@@ -39,4 +40,12 @@ object Currency {
     case "USD" => USD
   }
 
+  def isEquals(currency1: Currency, currency2: Currency): Boolean =
+    show.show(currency1) == show.show(currency2)
+
+  val allCurrencies: Seq[Currency] = SubtypeToList.fromKnownSubtypes[Currency]
+
+  val allPairs: Seq[Rate.Pair] = allCurrencies.flatMap(cf => {
+    allCurrencies.filterNot(isEquals(_, cf)).map(ct => Rate.Pair(from = cf, to = ct))
+  })
 }

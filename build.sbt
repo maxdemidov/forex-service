@@ -32,9 +32,13 @@ resolvers +=
 
 libraryDependencies ++= Seq(
   compilerPlugin(Libraries.kindProjector),
+  Libraries.scalaReflect,
+  Libraries.shapeless,
   Libraries.cats,
   Libraries.catsEffect,
   Libraries.fs2,
+  Libraries.zio,
+  Libraries.monix,
   Libraries.http4sDsl,
   Libraries.http4sServer,
   Libraries.http4sCirce,
@@ -44,6 +48,7 @@ libraryDependencies ++= Seq(
   Libraries.circeParser,
   Libraries.circeJava8,
   Libraries.pureConfig,
+  Libraries.scalaj,
   Libraries.logback,
   Libraries.scalaTest        % Test,
   Libraries.scalaCheck       % Test,
