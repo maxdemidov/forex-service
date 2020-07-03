@@ -1,4 +1,4 @@
-package forex.services.cache
+package forex.services.rates
 
 import io.circe.generic.extras.decoding.{EnumerationDecoder, UnwrappedDecoder}
 import io.circe.generic.extras.encoding.{EnumerationEncoder, UnwrappedEncoder}

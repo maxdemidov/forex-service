@@ -4,7 +4,8 @@ object errors {
 
   sealed trait Error
   object Error {
-    final case class OneFrameLookupFailed(msg: String) extends Error
+    final case class RequestFailed(msg: String) extends Error
+    final case class ParseResponseFailed(msg: String) extends Error
+    final case class OneFrameError(msg: String) extends Error
   }
-
 }

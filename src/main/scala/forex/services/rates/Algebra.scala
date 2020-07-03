@@ -1,11 +1,9 @@
 package forex.services.rates
 
-import cats.effect.concurrent.MVar
-import forex.domain.Rate
 import errors._
-import forex.programs.rates.CacheState
+import forex.domain.Rate
+import forex.programs.cache.CashType.RatesMap
 
 trait Algebra[F[_]] {
-  def get(pair: Rate.Pair,
-          state: F[MVar[F, Option[CacheState]]]): F[Error Either Rate]
+  def refresh(pairs: List[Rate.Pair]): F[Error Either RatesMap]
 }

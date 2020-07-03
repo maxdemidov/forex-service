@@ -1,62 +1,83 @@
 package forex.services.rates.interpreters
 
-import java.sql.{Timestamp => SqlTimestamp}
-import java.time.LocalDateTime
-
 import cats.Applicative
-import cats.effect.Concurrent
-import cats.effect.concurrent.MVar
+import cats.effect.{Async, Concurrent}
 import cats.implicits._
-import forex.domain.Rate
-import forex.programs.rates.CacheState
+import forex.common.parser.CommonJsonParser
+import forex.config.FrameConfig
+import forex.domain.{Currency, Rate}
+import forex.programs.cache.CashType.RatesMap
+import forex.services.rates.errors.Error.{OneFrameError, ParseResponseFailed, RequestFailed}
+import forex.services.rates.frame.Protocol.{FrameError, FrameRate}
 import forex.services.rates.errors._
-import forex.services.rates.{Algebra, errors}
+import forex.services.rates.Algebra
+import io.chrisdavenport.log4cats.Logger
+import scalaj.http.Http
 
-class OneFrameLive[F[_]: Applicative : Concurrent] extends Algebra[F] {
+import scala.annotation.tailrec
+import scala.util.{Failure, Success, Try}
 
-  override def get(pair: Rate.Pair,
-                   state: F[MVar[F, Option[CacheState]]]): F[Either[errors.Error, Rate]] = {
+class OneFrameLive[F[_]: Applicative: Concurrent: Logger](config: FrameConfig) extends Algebra[F]
+    with CommonJsonParser {
 
-    // todo:
-    //  cache should have timestamp and if it's empty or to old
-    //    call to frame and waiting for response
-    //    fill cash and answering after that
-    //    error instead if cant refresh cache
-    //  configurable period for cache
-    //  extends configs with token host port for new frame
-    //  extends api with ask bid values - show them by special query param
-    //  log count of calls to frame per day - process correct error in case they run out off
-    //    process parsing errors - set camel case for date from frame in model
-    //  test - concurrent first call when cache is empty - they should waiting and only one call should processed to frame
-    //  test - if cant get rates from frame in time - call often while didn't get and if cache expired process error correctly
-    //  consider to use TRef from ZIO
+  val url = s"http://${config.host}:${config.port}"
 
-    val now = LocalDateTime.now()
+  val emptyRatesMap: RatesMap = Map[Rate.Pair, Rate]()
+
+  override def refresh(pairs: List[Rate.Pair]): F[Either[Error, RatesMap]] = {
     for {
-      v <- state
-      ratesOpt <- v.read
-      e <- getRateToEither(pair, ratesOpt, now).pure[F]
-    } yield e
+      _ <- Logger[F].info("call external service")
+      res <- Async[F].async[Either[Error, RatesMap]] { cb =>
+        allRatesResponse() match {
+          case Right(allRates) =>
+            val mapByFrom = getMapByPair(allRates)
+            cb(mapByFrom.asRight[Error].asRight[Throwable])
+          case Left(error) =>
+            cb(error.asLeft[RatesMap].asRight[Throwable])
+        }
+      }
+    } yield res
+      //      val newCache: F[Option[CacheState]] = for {
+      //        _ <- state.take
+      //        _ <- state.put(Some(CacheState(timestamp, mapByFrom)))
+      //        v <- state.read
+      //      } yield v
+      //      for {
+      //        _ <- state.set(Some(CacheState(timestamp, mapByFrom)))
+      //        n <- state.get
+      //      } yield n
   }
 
-  private def getRateToEither(pair: Rate.Pair,
-                              chacheStateOpt: Option[CacheState],
-                              now: LocalDateTime): Either[Error, Rate] = {
-    chacheStateOpt match {
-      case Some(cacheState) =>
-        if (SqlTimestamp.valueOf(now.minusSeconds(15)).getTime <= SqlTimestamp.valueOf(cacheState.timestamp).getTime) {
-          cacheState.rates.get(pair) match {
-            case Some(rate) =>
-              Right(rate)
-            case None =>
-              Left(Error.OneFrameLookupFailed("no such pair"))
-          }
-        } else {
-          Left(Error.OneFrameLookupFailed("no actual rate for pair"))
+  private def allRatesResponse(): Either[Error, List[FrameRate]] = { // todo - consider to use optionT
+    val allPairs = Currency.allPairs.map(p => s"pair=${p.from}${p.to}").reduce(_ + "&" + _)
+    val ratesUrl = s"$url/rates?$allPairs"
+    val token = config.token
+    Try(Http(ratesUrl).header("token", token).asString) match {
+      case Success(response) =>
+        parseTo[List[FrameRate]](response.body) match {
+          case Right(frameRates) => frameRates.asRight[Error]
+          case Left(_) =>
+            parseTo[FrameError](response.body) match {
+              case Right(frameError) => OneFrameError(frameError.error.message).asLeft[List[FrameRate]]
+              case Left(msg) => ParseResponseFailed(msg).asLeft[List[FrameRate]]
+            }
         }
-      case None =>
-        // todo - wait or left
-        Left(Error.OneFrameLookupFailed("no any rates"))
+      case Failure(e) => RequestFailed(e.getMessage).asLeft[List[FrameRate]]
     }
+  }
+
+  private def getMapByPair(allRates: List[FrameRate]): RatesMap = {
+    import forex.services.rates.frame.Converters._
+    @tailrec
+    def convertToMap(frameRates: List[FrameRate], map: RatesMap): RatesMap = {
+      frameRates match {
+        case frameRate :: otherFrameRates =>
+          val pair = Rate.Pair(frameRate.from, frameRate.to)
+          val rate = frameRate.asRate
+          convertToMap(otherFrameRates, map + (pair -> rate))
+        case Nil => map
+      }
+    }
+    convertToMap(allRates, emptyRatesMap)
   }
 }

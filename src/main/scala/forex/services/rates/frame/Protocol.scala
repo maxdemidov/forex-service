@@ -1,10 +1,11 @@
-package forex.services.cache.frame
+package forex.services.rates.frame
 
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 import forex.domain.Currency
-import forex.services.cache.frame.Protocol.FrameRate.{RateDateTime, RateValue}
+import forex.services.rates.frame.Protocol.FrameError.ErrorMessage
+import forex.services.rates.frame.Protocol.FrameRate.{RateDateTime, RateValue}
 import io.circe.Decoder
 import io.circe.generic.semiauto.deriveDecoder
 
@@ -33,7 +34,16 @@ object Protocol {
   implicit val framePairDecoder: Decoder[FrameRate] = deriveDecoder[FrameRate]
 
 
-  val formatter: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+  case class FrameError(error: ErrorMessage)
+
+  case object FrameError {
+    case class ErrorMessage(message: String) extends AnyVal
+  }
+
+  implicit val frameErrorDecoder: Decoder[FrameError] = deriveDecoder[FrameError]
+
+
+  val formatter: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'") // todo - there some problems in case .1Z at the end
   def parseToEither(str: String): Either[String, LocalDateTime] =
     Try(LocalDateTime.parse(str, formatter)) match {
       case Success(ldt) => Right(ldt)

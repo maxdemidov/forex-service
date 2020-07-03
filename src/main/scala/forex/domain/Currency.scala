@@ -43,9 +43,9 @@ object Currency {
   def isEquals(currency1: Currency, currency2: Currency): Boolean =
     show.show(currency1) == show.show(currency2)
 
-  val allCurrencies: Seq[Currency] = SubtypeToList.fromKnownSubtypes[Currency]
+  val allCurrencies: List[Currency] = SubtypeToList.fromKnownSubtypes[Currency]
 
-  val allPairs: Seq[Rate.Pair] = allCurrencies.flatMap(cf => {
+  val allPairs: List[Rate.Pair] = allCurrencies.flatMap(cf => {
     allCurrencies.filterNot(isEquals(_, cf)).map(ct => Rate.Pair(from = cf, to = ct))
   })
 }

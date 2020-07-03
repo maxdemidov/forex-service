@@ -1,7 +1,7 @@
-package forex.services.cache.frame
+package forex.services.rates.frame
 
-import forex.domain.{Ask, Bid, Price, Rate, Timestamp}
-import forex.services.cache.frame.Protocol.FrameRate
+import forex.domain._
+import Protocol.FrameRate
 
 object Converters {
 

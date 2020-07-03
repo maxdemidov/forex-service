@@ -50,6 +50,8 @@ libraryDependencies ++= Seq(
   Libraries.pureConfig,
   Libraries.scalaj,
   Libraries.logback,
+  Libraries.log4catsCore,
+  Libraries.log4catsSlf4j,
   Libraries.scalaTest        % Test,
   Libraries.scalaCheck       % Test,
   Libraries.catsScalaCheck   % Test
