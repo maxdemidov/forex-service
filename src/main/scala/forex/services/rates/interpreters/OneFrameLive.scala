@@ -6,7 +6,7 @@ import cats.implicits._
 import forex.common.parser.CommonJsonParser
 import forex.config.FrameConfig
 import forex.domain.{Currency, Rate}
-import forex.programs.cache.CashType.RatesMap
+import forex.programs.cache.RatesCacheRef.RatesMap
 import forex.services.rates.errors.Error.{OneFrameError, ParseResponseFailed, RequestFailed}
 import forex.services.rates.frame.Protocol.{FrameError, FrameRate}
 import forex.services.rates.errors._
@@ -37,15 +37,6 @@ class OneFrameLive[F[_]: Applicative: Concurrent: Logger](config: FrameConfig) e
         }
       }
     } yield res
-      //      val newCache: F[Option[CacheState]] = for {
-      //        _ <- state.take
-      //        _ <- state.put(Some(CacheState(timestamp, mapByFrom)))
-      //        v <- state.read
-      //      } yield v
-      //      for {
-      //        _ <- state.set(Some(CacheState(timestamp, mapByFrom)))
-      //        n <- state.get
-      //      } yield n
   }
 
   private def allRatesResponse(): Either[Error, List[FrameRate]] = { // todo - consider to use optionT
@@ -58,11 +49,14 @@ class OneFrameLive[F[_]: Applicative: Concurrent: Logger](config: FrameConfig) e
           case Right(frameRates) => frameRates.asRight[Error]
           case Left(_) =>
             parseTo[FrameError](response.body) match {
-              case Right(frameError) => OneFrameError(frameError.error.message).asLeft[List[FrameRate]]
-              case Left(msg) => ParseResponseFailed(msg).asLeft[List[FrameRate]]
+              case Right(frameError) =>
+                OneFrameError(frameError.error.message).asLeft[List[FrameRate]]
+              case Left(msg) =>
+                ParseResponseFailed(msg).asLeft[List[FrameRate]]
             }
         }
-      case Failure(e) => RequestFailed(e.getMessage).asLeft[List[FrameRate]]
+      case Failure(e) =>
+        RequestFailed(e.getMessage).asLeft[List[FrameRate]]
     }
   }
 

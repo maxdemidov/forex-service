@@ -1,75 +1,59 @@
 package forex.services.state.interpreters
 
-import java.sql.{Timestamp => SQLTimestamp}
-import java.time.{Instant, LocalDateTime, ZoneOffset}
 import java.util.concurrent.TimeUnit
 
 import cats.effect.{Clock, Concurrent}
-import cats.effect.concurrent.Ref
 import cats.implicits._
 import forex.services.state.errors._
 import forex.domain.Rate
 import forex.services.state.Algebra
-import forex.programs.cache.CacheState
+import forex.programs.cache.RatesCacheRef
+import forex.programs.cache.RatesCacheRef.{ActiveCache, EmptyCache, RatesMap}
+import forex.services.state.errors.Error.StateLookupFailed
 import io.chrisdavenport.log4cats.Logger
 
-class OneStateService[F[_]: Concurrent: Clock: Logger](state: Ref[F, Option[CacheState]]) extends Algebra[F] {
-
-  private def minus(ts: Long) = {
-    val ldt = LocalDateTime.ofInstant(Instant.ofEpochMilli(ts), ZoneOffset.UTC)
-    SQLTimestamp.valueOf(ldt.minusSeconds(15)).getTime
-  }
+// todo - consider to move it to cache package
+class OneStateService[F[_]: Concurrent: Clock: Logger](ratesCacheRef: RatesCacheRef[F]) extends Algebra[F] {
 
   def get(pair: Rate.Pair): F[Error Either Rate] = {
     for {
-      timestamp <- Clock[F].realTime(TimeUnit.MICROSECONDS)
-      cache <- state.get
-      v <- getRateToEither(pair, cache, timestamp)
-    } yield v
+      requestTime <- Clock[F].realTime(TimeUnit.MILLISECONDS)
+      _ <- Logger[F].debug(s"get rate for pair = [from = ${pair.from}, to = ${pair.to}], requestTime = [$requestTime]")
+      ratesCache <- ratesCacheRef.ratesCache.get
+      _ <- ratesCache.getsCount.getAndUpdate(_ + 1)
+      status <- ratesCache.status.get
+      res <- status match {
 
-    //    val now = LocalDateTime.now()
-    //    for {
-    //      cache <- state.flatMap(_.get)
-    //      v <- getRateToEither(pair, cache, now).pure[F]
-    //    } yield v
+        case ActiveCache =>
+          for {
+            _ <- Logger[F].debug("active cache, get rate from map directly")
+            ratesMap <- ratesCache.ratesMap.get
+            rate <- getRateFromMap(pair, ratesMap)
+          } yield rate
 
-    //    for {
-    //      v <- state
-    //      ratesOpt <- v.read
-    //      e <- getRateToEither(pair, ratesOpt, now).pure[F]
-    //    } yield e
-    //    getRateToEither(pair, state, now).pure[F]
+        case EmptyCache =>
+          for {
+            _ <- Logger[F].info("empty cache, rate map should be filled now")
+            _ <- ratesCache.toFillTrigger.release
+            ratesMap <- ratesCache.ratesMap.get
+            rate <- getRateFromMap(pair, ratesMap)
+          } yield rate
+      }
+    } yield res
   }
 
-  private def getRateToEither(pair: Rate.Pair,
-                              cacheStateOpt: Option[CacheState],
-                              timestamp: Long): F[Either[Error, Rate]] = {
-    cacheStateOpt match {
-      case Some(cacheState) =>
-        if (minus(timestamp) <= cacheState.timestamp) {
-          cacheState.rates.get(pair) match {
-            case Some(rate) =>
-              for {
-                _ <- Logger[F].debug("getRateToEither rate " + rate)
-                rate <- Right(rate).pure[F]
-              } yield rate
-            case None =>
-              for {
-                _ <- Logger[F].error(s"getRateToEither no such for rate = [$pair]")
-                error <- Left(Error.StateLookupFailed("no such pair")).pure[F]
-              } yield error
-          }
-        } else {
-          for {
-            _ <- Logger[F].error(s"getRateToEither incorrect time now = [$timestamp] <= [${cacheState.timestamp}]")
-            error <- Left(Error.StateLookupFailed("no actual rate for pair")).pure[F]
-          } yield error
-        }
-      case None =>
-        // todo - wait or left
+  private def getRateFromMap(pair: Rate.Pair,
+                             ratesMap: RatesMap): F[Either[Error, Rate]] = {
+    ratesMap.get(pair) match {
+      case Some(rate) =>
         for {
-          _ <- Logger[F].error("getRateToEither None")
-          error <- Left(Error.StateLookupFailed("no any rates")).pure[F]
+          _ <- Logger[F].debug("getRateToEither rate " + rate)
+          rate <- Right(rate).pure[F]
+        } yield rate
+      case None =>
+        for {
+          _ <- Logger[F].error(s"getRateToEither no such for rate = [$pair]")
+          error <- Left(StateLookupFailed("no such pair")).pure[F]
         } yield error
     }
   }

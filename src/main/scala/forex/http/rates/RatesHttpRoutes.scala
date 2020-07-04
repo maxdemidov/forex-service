@@ -6,6 +6,7 @@ import cats.effect.Sync
 import cats.syntax.flatMap._
 import forex.domain.Currency
 import forex.programs.RatesProgram
+import forex.programs.rates.errors.Error.RateLookupFailed
 import forex.programs.rates.{Protocol => RatesProgramProtocol}
 import org.http4s.{HttpRoutes, Response}
 import org.http4s.dsl.Http4sDsl
@@ -37,8 +38,9 @@ class RatesHttpRoutes[F[_]: Sync](rates: RatesProgram[F]) extends Http4sDsl[F] {
   )
 
   private def getRates(from: Currency, to: Currency): F[Response[F]] = {
-    rates.get(RatesProgramProtocol.GetRatesRequest(from, to)).flatMap(Sync[F].fromEither).flatMap { rate =>
-      Ok(rate.asGetApiResponse)
+    rates.get(RatesProgramProtocol.GetRatesRequest(from, to)).flatMap {
+      case Right(rate)                 => Ok(rate.asGetApiResponse)
+      case Left(RateLookupFailed(msg)) => InternalServerError(msg)
     }
   }
 }

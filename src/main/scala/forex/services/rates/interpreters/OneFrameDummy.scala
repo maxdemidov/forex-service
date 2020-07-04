@@ -7,7 +7,7 @@ import forex.services.rates.errors._
 import cats.syntax.either._
 import cats.syntax.applicative._
 import forex.domain.Currency.{EUR, USD}
-import forex.programs.cache.CashType.RatesMap
+import forex.programs.cache.RatesCacheRef.RatesMap
 
 // todo - remove
 class OneFrameDummy[F[_]: Applicative] extends Algebra[F] {
