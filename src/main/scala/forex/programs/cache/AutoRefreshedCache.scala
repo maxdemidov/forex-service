@@ -8,15 +8,13 @@ import cats.implicits._
 import errors._
 import forex.config.CacheConfig
 import forex.domain.Currency
-import forex.programs.cache.RatesStateRef.FrameTimedCall
 import forex.programs.cache.RatesCacheRef.{CacheUUID, RatesCache, RatesMap}
-import forex.services.RatesService
+import forex.services.{CallsHistoryService, RatesService}
 import forex.programs.cache.errors.Error.{CacheRefreshOneFrameError, CacheRefreshParseResponseFailed, CacheRefreshRequestFailed, CacheRefreshTimeoutExceeded}
 import forex.services.cache.{Algebra, RatesCacheService}
+import forex.services.metric.TimedCall
 import io.chrisdavenport.log4cats.Logger
 
-import scala.annotation.tailrec
-import scala.collection.mutable
 import scala.concurrent.ExecutionContextExecutor
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.duration._
@@ -27,6 +25,7 @@ object AutoRefreshedCache {
 
   def initiate[F[_]: Concurrent: Timer: ContextShift: Logger](config: CacheConfig,
                                                               ratesService: RatesService[F],
+                                                              historyCalls: CallsHistoryService[F],
                                                               blockingEC: ExecutionContextExecutor): F[Algebra[F]] = {
 
     def performEagerRefresh()(implicit cacheRef: RatesCacheRef[F], stateRef: RatesStateRef[F]): F[Unit] = {
@@ -77,39 +76,35 @@ object AutoRefreshedCache {
         res <- frameResponse match {
           case Right(ratesMap) =>
             for {
-              _ <- Concurrent[F].start(
-                addTo(FrameTimedCall(cachedTime, s"rates successfully obtained, size = [${ratesMap.size}]"), stateRef.callsHistory)
-              )
+              _ <- Concurrent[F].start(addTo(TimedCall(cachedTime, s"rates successfully obtained, map size = [${ratesMap.size}]")))
               res <- ratesMap.pure[F]
             } yield res
           case Left(error: Error) =>
             for {
-              _ <- Concurrent[F].start(
-                addTo(FrameTimedCall(cachedTime, s"error when obtaining rates = $error"), stateRef.callsHistory)
-              )
+              _ <- Concurrent[F].start(addTo(TimedCall(cachedTime, s"error when obtaining rates = $error")))
               res <- error match {
                 case CacheRefreshTimeoutExceeded(msg) =>
                   for {
                     _ <- Logger[F].error("CacheRefreshTimeoutExceeded msg = " + msg)
-                    timeout <- CacheUtil.nextRetryTimeoutOrElse[F](config, 5.seconds)
+                    timeout <- CacheUtil.nextRetryTimeout[F](config, 5.seconds)
                     res <- scheduleRetryRefresh(timeout)
                   } yield res
                 case CacheRefreshParseResponseFailed(msg) =>
                   for {
                     _ <- Logger[F].error("CacheRefreshParseResponseFailed msg = " + msg)
-                    timeout <- CacheUtil.nextRetryTimeoutOrElse[F](config, 2.seconds)
+                    timeout <- CacheUtil.nextRetryTimeout[F](config, 2.seconds)
                     res <- scheduleRetryRefresh(timeout)
                   } yield res
                 case CacheRefreshRequestFailed(msg) =>
                   for {
                     _ <- Logger[F].error("CacheRefreshRequestFailed msg = " + msg)
-                    timeout <- CacheUtil.nextRetryTimeoutOrElse[F](config, 2.seconds)
+                    timeout <- CacheUtil.nextRetryTimeout[F](config, 2.seconds)
                     res <- scheduleRetryRefresh(timeout)
                   } yield res
                 case CacheRefreshOneFrameError(msg) =>
                   for {
                     _ <- Logger[F].error("CacheRefreshOneFrameError msg = " + msg)
-                    timeout <- CacheUtil.nextRetryTimeoutOrElse[F](config, config.refreshTimeout)
+                    timeout <- CacheUtil.nextRetryTimeout[F](config, config.refreshTimeout)
                     res <- scheduleRetryRefresh(timeout)
                   } yield res
               }
@@ -130,41 +125,16 @@ object AutoRefreshedCache {
     def performClean(cacheUUID: CacheUUID)
                     (implicit cacheRef: RatesCacheRef[F], stateRef: RatesStateRef[F]): F[Unit] = {
       for {
-        time <- Timer[F].clock.realTime(TimeUnit.MILLISECONDS)
-        _ <- Logger[F].debug(s"perform clean on time = [$time]")
+        now <- Timer[F].clock.realTime(TimeUnit.MILLISECONDS)
+        _ <- Logger[F].debug(s"perform clean on time = [$now]")
         ratesCache <- cacheRef.ratesCache.get
         _ <- if (ratesCache.cacheUUID == cacheUUID) performLazyRefresh() else ().pure[F]
-        _ <- ContextShift[F].shift *> performCleanQueue(time, stateRef.callsHistory)
+        _ <- ContextShift[F].evalOn(blockingEC)(historyCalls.clean(now))
       } yield ()
     }
 
-    // todo - move queue out from cache as service with own algebra and possible other implementation - not only as queue
-    def performCleanQueue(time: Long,
-                          callsHistory: mutable.Queue[FrameTimedCall]): F[Unit] = {
-
-      def cleanOld(time: Long, callsHistory: mutable.Queue[FrameTimedCall]): Unit = {
-        val timeToClean = time - config.metricLiveTimeout.toMillis
-        @tailrec
-        def dequeueOldOne(queue: mutable.Queue[FrameTimedCall]): Unit = {
-          queue.headOption match {
-            case Some(timedCall) if timedCall.timestamp < timeToClean =>
-              queue.dequeue()
-              dequeueOldOne(queue)
-            case _ => ()
-          }
-        }
-        dequeueOldOne(callsHistory)
-      }
-
-      ContextShift[F].evalOn(blockingEC)(
-        cleanOld(time, callsHistory).pure[F]
-      )
-    }
-
-    def addTo(timedCall: FrameTimedCall, callsHistory: mutable.Queue[FrameTimedCall]): F[Unit] = {
-      ContextShift[F].evalOn(blockingEC)(
-        callsHistory.enqueue(timedCall).pure[F]
-      )
+    def addTo(timedCall: TimedCall): F[Unit] = {
+      ContextShift[F].evalOn(blockingEC)(historyCalls.add(timedCall))
     }
 
     def scheduleNextRefresh(scheduleDuration: FiniteDuration)
@@ -194,3 +164,7 @@ object AutoRefreshedCache {
     } yield new RatesCacheService[F](cacheRef)
   }
 }
+
+// todo
+//  test - concurrent first call when cache is empty - they should waiting and only one call should processed to frame
+//  test - if cant get rates from frame in time - call often while didn't get and if cache expired process error correctly

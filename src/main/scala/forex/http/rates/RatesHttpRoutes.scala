@@ -20,6 +20,10 @@ class RatesHttpRoutes[F[_]: Sync](rates: RatesProgram[F]) extends Http4sDsl[F] {
 
   private val httpRoutes: HttpRoutes[F] = HttpRoutes.of[F] {
 
+    // todo:
+    //  extends api with ask bid values - show them by special query param
+    //  add metrics api with call to get list
+
     case GET -> Root :? FromQueryParam(fromE) +& ToQueryParam(toE) =>
 
       val params = for {

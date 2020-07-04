@@ -5,7 +5,8 @@ import scala.concurrent.duration.FiniteDuration
 case class ApplicationConfig(
     http: HttpConfig,
     frame: FrameConfig,
-    cache: CacheConfig
+    cache: CacheConfig,
+    metric: MetricConfig
 )
 
 case class HttpConfig(
@@ -24,5 +25,8 @@ case class CacheConfig(
     expirationTimeout: FiniteDuration,
     refreshTimeout: FiniteDuration,
     waitTimeout: FiniteDuration,
+)
+
+case class MetricConfig(
     metricLiveTimeout: FiniteDuration
 )
