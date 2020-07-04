@@ -1,4 +1,4 @@
-package forex.services.state
+package forex.services.cache
 
 object errors {
 

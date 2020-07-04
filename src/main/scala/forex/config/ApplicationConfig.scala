@@ -23,5 +23,6 @@ case class FrameConfig(
 case class CacheConfig(
     expirationTimeout: FiniteDuration,
     refreshTimeout: FiniteDuration,
-    waitTimeout: FiniteDuration
+    waitTimeout: FiniteDuration,
+    metricLiveTimeout: FiniteDuration
 )

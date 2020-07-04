@@ -9,9 +9,9 @@ import org.http4s._
 import org.http4s.implicits._
 import org.http4s.server.middleware.{AutoSlash, Timeout}
 
-class Module[F[_]: Concurrent: Timer](httpConfig: HttpConfig, stateService: StateService[F]) {
+class Module[F[_]: Concurrent: Timer](httpConfig: HttpConfig, ratesCacheService: RatesCacheService[F]) {
 
-  private val ratesProgram: RatesProgram[F] = RatesProgram[F](stateService)
+  private val ratesProgram: RatesProgram[F] = RatesProgram[F](ratesCacheService)
 
   private val ratesHttpRoutes: HttpRoutes[F] = new RatesHttpRoutes[F](ratesProgram).routes
 
