@@ -6,162 +6,109 @@ import java.util.concurrent.TimeUnit
 import cats.effect.{Concurrent, ContextShift, Timer}
 import cats.implicits._
 import errors._
+import forex.common.datetime.DateTimeConverters
 import forex.config.CacheConfig
 import forex.domain.Currency
-import forex.programs.cache.RatesCacheRef.{CacheUUID, RatesCache, RatesMap}
+import forex.domain.RateTypes.RatesList
+import forex.programs.cache.RatesCacheRef.{CacheUUID, RatesCache}
 import forex.services.{CallsHistoryService, RatesService}
-import forex.programs.cache.errors.Error.{CacheRefreshOneFrameError, CacheRefreshParseResponseFailed, CacheRefreshRequestFailed, CacheRefreshTimeoutExceeded}
+import forex.programs.cache.errors.Error.CacheRefreshTimeoutExceeded
 import forex.services.cache.{Algebra, RatesCacheService}
-import forex.services.metric.TimedCall
+import forex.services.history.RateHistoryCall
 import io.chrisdavenport.log4cats.Logger
 
 import scala.concurrent.ExecutionContextExecutor
 import scala.concurrent.duration.FiniteDuration
-import scala.concurrent.duration._
 
 object AutoRefreshedCache {
 
   val errorOnTimeout: Error = CacheRefreshTimeoutExceeded("Cash refresh timeout exceeded")
 
-  def initiate[F[_]: Concurrent: Timer: ContextShift: Logger](config: CacheConfig,
+  def initiate[F[_]: Concurrent: Timer: ContextShift: Logger](cacheConfig: CacheConfig,
                                                               ratesService: RatesService[F],
                                                               historyCalls: CallsHistoryService[F],
                                                               blockingEC: ExecutionContextExecutor): F[Algebra[F]] = {
 
-    def performEagerRefresh()(implicit cacheRef: RatesCacheRef[F], stateRef: RatesStateRef[F]): F[Unit] = {
-      for {
-        cachedTime <- Timer[F].clock.realTime(TimeUnit.MILLISECONDS)
-        _ <- Logger[F].debug(s"perform eager refresh time = [$cachedTime]") // todo - show formatted
+    implicit val refreshTimeout: FiniteDuration = cacheConfig.refreshTimeout
 
-        ratesMap <- ContextShift[F].shift *> performRefreshCall()
-        newRateCache <- RatesCache.empty
-        _ <- newRateCache.ratesMap.complete(ratesMap)
-        _ <- cacheRef.ratesCache.set(newRateCache)
-
-        _ <- Concurrent[F].start(
-          scheduleNextClean(config.expirationTimeout, newRateCache.cacheUUID)
-        )
-        _ <- stateRef.nextRetryAfter.tryTake
-        _ <- scheduleNextRefresh(config.refreshTimeout)
-      } yield ()
+    def getRatesForAllPairsCall: F[Either[Error, RatesList]] = {
+      val apiCall = ratesService.get(Currency.allPairs).map(_.leftMap(toCacheError))
+      Concurrent.timeoutTo(
+        ContextShift[F].evalOn(blockingEC)(apiCall), cacheConfig.waitTimeout, errorOnTimeout.asLeft[RatesList].pure[F]
+      )
     }
 
-    def performLazyRefresh()(implicit cacheRef: RatesCacheRef[F], stateRef: RatesStateRef[F]): F[Unit] = {
+    def historyAddCall(rateHistoryCall: RateHistoryCall): F[Unit] =
+      ContextShift[F].evalOn(blockingEC)(historyCalls.add(rateHistoryCall))
+
+    def historyCleanCall(nowTime: Long): F[Unit] =
+      ContextShift[F].evalOn(blockingEC)(historyCalls.clean(nowTime))
+
+    def performRefresh(isEager: Boolean)
+                      (implicit cacheRef: RatesCacheRef[F], stateRef: RatesStateRef[F]): F[Unit] =
       for {
-        cachedTime <- Timer[F].clock.realTime(TimeUnit.MILLISECONDS)
-        _ <- Logger[F].debug(s"perform lazy refresh time = [$cachedTime]") // todo - show formatted
-
-        newRateCache <- RatesCache.empty
-        _ <- cacheRef.ratesCache.set(newRateCache)
-        _ <- newRateCache.calls.acquire
-        ratesMap <- ContextShift[F].shift *> performRefreshCall()
-        _ <- newRateCache.ratesMap.complete(ratesMap)
-        _ <- newRateCache.calls.release
-
-        _ <- Concurrent[F].start(
-          scheduleNextClean(config.expirationTimeout, newRateCache.cacheUUID)
-        )
-        _ <- stateRef.nextRetryAfter.tryTake
-        _ <- scheduleNextRefresh(config.refreshTimeout)
-      } yield ()
-    }
-
-    def performRefreshCall()(implicit stateRef: RatesStateRef[F]): F[RatesMap] = {
-      val apiCall = ratesService.refresh(Currency.allPairs).map(_.leftMap(toCacheError))
-      for {
-        cachedTime <- Timer[F].clock.realTime(TimeUnit.MILLISECONDS)
-        frameResponse <- Concurrent.timeoutTo(
-          ContextShift[F].evalOn(blockingEC)(apiCall), config.waitTimeout, errorOnTimeout.asLeft[RatesMap].pure[F]
-        )
-        res <- frameResponse match {
-          case Right(ratesMap) =>
-            for {
-              _ <- Concurrent[F].start(addTo(TimedCall(cachedTime, s"rates successfully obtained, map size = [${ratesMap.size}]")))
-              res <- ratesMap.pure[F]
-            } yield res
-          case Left(error: Error) =>
-            for {
-              _ <- Concurrent[F].start(addTo(TimedCall(cachedTime, s"error when obtaining rates = $error")))
-              res <- error match {
-                case CacheRefreshTimeoutExceeded(msg) =>
-                  for {
-                    _ <- Logger[F].error("CacheRefreshTimeoutExceeded msg = " + msg)
-                    timeout <- CacheUtil.nextRetryTimeout[F](config, 5.seconds)
-                    res <- scheduleRetryRefresh(timeout)
-                  } yield res
-                case CacheRefreshParseResponseFailed(msg) =>
-                  for {
-                    _ <- Logger[F].error("CacheRefreshParseResponseFailed msg = " + msg)
-                    timeout <- CacheUtil.nextRetryTimeout[F](config, 2.seconds)
-                    res <- scheduleRetryRefresh(timeout)
-                  } yield res
-                case CacheRefreshRequestFailed(msg) =>
-                  for {
-                    _ <- Logger[F].error("CacheRefreshRequestFailed msg = " + msg)
-                    timeout <- CacheUtil.nextRetryTimeout[F](config, 2.seconds)
-                    res <- scheduleRetryRefresh(timeout)
-                  } yield res
-                case CacheRefreshOneFrameError(msg) =>
-                  for {
-                    _ <- Logger[F].error("CacheRefreshOneFrameError msg = " + msg)
-                    timeout <- CacheUtil.nextRetryTimeout[F](config, config.refreshTimeout)
-                    res <- scheduleRetryRefresh(timeout)
-                  } yield res
-              }
-            } yield res
+        refreshTime <- Timer[F].clock.realTime(TimeUnit.MILLISECONDS).map(DateTimeConverters.toDateTimeFormat)
+        _ <- Logger[F].debug(s"Perform refresh, isEager = [$isEager], time = [$refreshTime]")
+        newRateCache <- if (isEager) {
+          for {
+            ratesMap <- ContextShift[F].shift *> AutoRetryCall.performRetryRefreshCall(getRatesForAllPairsCall, historyAddCall)
+            newRateCache <- RatesCache.empty
+            _ <- newRateCache.ratesMap.complete(ratesMap)
+            _ <- showLastCount() *> cacheRef.ratesCache.set(newRateCache)
+          } yield newRateCache
+        } else {
+          for {
+            newRateCache <- RatesCache.empty
+            _ <- showLastCount() *> cacheRef.ratesCache.set(newRateCache)
+            _ <- newRateCache.calls.acquire
+            ratesMap <- ContextShift[F].shift *> AutoRetryCall.performRetryRefreshCall(getRatesForAllPairsCall, historyAddCall)
+            _ <- newRateCache.ratesMap.complete(ratesMap)
+            _ <- newRateCache.calls.release
+          } yield newRateCache
         }
-      } yield res
-    }
-
-    def scheduleRetryRefresh(scheduleDuration: FiniteDuration)
-                            (implicit stateRef: RatesStateRef[F]): F[RatesMap] = {
-      for {
-        _ <- Logger[F].debug(s"schedule next retry on error with timeout = [$scheduleDuration]")
-        _ <- Timer[F].sleep(scheduleDuration)
-        frameResponse <- performRefreshCall()
-      } yield frameResponse
-    }
-
-    def performClean(cacheUUID: CacheUUID)
-                    (implicit cacheRef: RatesCacheRef[F], stateRef: RatesStateRef[F]): F[Unit] = {
-      for {
-        now <- Timer[F].clock.realTime(TimeUnit.MILLISECONDS)
-        _ <- Logger[F].debug(s"perform clean on time = [$now]")
-        ratesCache <- cacheRef.ratesCache.get
-        _ <- if (ratesCache.cacheUUID == cacheUUID) performLazyRefresh() else ().pure[F]
-        _ <- ContextShift[F].evalOn(blockingEC)(historyCalls.clean(now))
+        _ <- ContextShift[F].shift *> scheduleNextClean(cacheConfig.expirationTimeout, newRateCache.cacheUUID)
+        _ <- stateRef.nextRetryAfter.tryTake
+        _ <- ContextShift[F].shift *> scheduleNextRefresh(cacheConfig.refreshTimeout)
       } yield ()
-    }
 
-    def addTo(timedCall: TimedCall): F[Unit] = {
-      ContextShift[F].evalOn(blockingEC)(historyCalls.add(timedCall))
+    def showLastCount()(implicit cacheRef: RatesCacheRef[F]): F[Unit] = {
+      for {
+        callsCount <- cacheRef.ratesCache.get.flatMap(_.calls.available)
+        _ <- Logger[F].debug(s"Last calls to previous cache, count = [$callsCount]")
+      } yield ()
     }
 
     def scheduleNextRefresh(scheduleDuration: FiniteDuration)
-                           (implicit cacheRef: RatesCacheRef[F], stateRef: RatesStateRef[F]): F[Unit] = {
+                           (implicit cacheRef: RatesCacheRef[F], stateRef: RatesStateRef[F]): F[Unit] =
       for {
-        _ <- Logger[F].debug(s"schedule next refresh with timeout = [$scheduleDuration]")
+        _ <- Logger[F].debug(s"Schedule next refresh with timeout = [$scheduleDuration]")
         _ <- Timer[F].sleep(scheduleDuration)
-        calls <- cacheRef.ratesCache.get.flatMap(_.calls.available)
-        _ <- Logger[F].debug(s"last calls = [$calls]")
-        _ <- Concurrent[F].start(if (calls > 0) performEagerRefresh() else performLazyRefresh())
+        isAnyCalls <- cacheRef.ratesCache.get.flatMap(_.calls.available.map(_ > 0))
+        _ <- Concurrent[F].start(
+          if (isAnyCalls) performRefresh(isEager = true) else performRefresh(isEager = false)
+        )
       } yield ()
-    }
 
     def scheduleNextClean(scheduleDuration: FiniteDuration, cacheUUID: CacheUUID)
-                         (implicit cacheRef: RatesCacheRef[F], stateRef: RatesStateRef[F]): F[Unit] = {
+                         (implicit cacheRef: RatesCacheRef[F], stateRef: RatesStateRef[F]): F[Unit] =
       for {
-        _ <- Logger[F].debug(s"schedule next clean with timeout = [$scheduleDuration]")
-        c <- Timer[F].sleep(scheduleDuration)
-        _ <- Concurrent[F].start(performClean(cacheUUID))
-      } yield c
-    }
+        _ <- Logger[F].debug(s"Schedule next clean with timeout = [$scheduleDuration]")
+        _ <- Timer[F].sleep(scheduleDuration)
+        ratesCache <- cacheRef.ratesCache.get
+        _ <- if (ratesCache.cacheUUID == cacheUUID) {
+          for {
+            _ <- Concurrent[F].start(performRefresh(isEager = false)).pure[F]
+          } yield ()
+        } else ().pure[F]
+        nowTime <- Timer[F].clock.realTime(TimeUnit.MILLISECONDS)
+        _ <- Concurrent[F].start(historyCleanCall(nowTime))
+      } yield ()
 
     for { // todo - use better monadic for
       cacheRef <- RatesCacheRef.initial
       stateRef <- RatesStateRef.initial
-      _ <- Concurrent[F].start(performEagerRefresh()(cacheRef, stateRef)) // todo - consider to perform lazy refresh which triggered at once
-    } yield new RatesCacheService[F](cacheRef)
+      _ <- Concurrent[F].start(performRefresh(isEager = true)(cacheRef, stateRef))
+    } yield new RatesCacheService[F](cacheRef) // todo - get instance from outside like other services - initialize on override constructor
   }
 }
 

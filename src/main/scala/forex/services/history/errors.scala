@@ -1,4 +1,4 @@
-package forex.services.metric
+package forex.services.history
 
 // todo - ???
 object errors {

@@ -31,14 +31,12 @@ class Application[F[_]: ConcurrentEffect: Timer: ContextShift: Logger](blockingE
   def stream: Stream[F, Unit] =
     for {
       config <- Config.stream("app")
-      ratesService <-
-        Stream.eval(RatesServices.live[F](config.frame).pure[F])
-      callsHistoryService <-
-        Stream.eval(CallsHistoryServices.queue[F](config.metric).pure[F])
-      cacheService <-
-        Stream.eval(
-          AutoRefreshedCache.initiate(config.cache, ratesService, callsHistoryService, blockingEC)
-        )
+      ratesService <- Stream.eval(RatesServices.live[F](config.frame).pure[F])
+      callsHistoryService <- Stream.eval(CallsHistoryServices.queue[F](config.history).pure[F])
+      // todo - create cache service outside of cache object
+      cacheService <- Stream.eval(
+        AutoRefreshedCache.initiate(config.cache, ratesService, callsHistoryService, blockingEC)
+      )
       module = new Module[F](config.http, cacheService)
       _ <- BlazeServerBuilder[F]
             .bindHttp(config.http.port, config.http.host)

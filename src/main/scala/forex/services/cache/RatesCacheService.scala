@@ -4,10 +4,11 @@ import java.util.concurrent.TimeUnit
 
 import cats.effect.{Clock, Concurrent}
 import cats.implicits._
+import forex.common.datetime.DateTimeConverters
 import forex.domain.Rate
+import forex.domain.RateTypes.RatesMap
 import forex.programs.cache.RatesCacheRef
-import forex.programs.cache.RatesCacheRef.RatesMap
-import forex.services.cache.errors.Error.StateLookupFailed
+import forex.services.cache.errors.Error.RatesLookupFailed
 import forex.services.cache.errors._
 import io.chrisdavenport.log4cats.Logger
 
@@ -16,8 +17,8 @@ class RatesCacheService[F[_]: Concurrent: Clock: Logger](ratesCacheRef: RatesCac
 
   def get(pair: Rate.Pair): F[Error Either Rate] = {
     for {
-      requestTime <- Clock[F].realTime(TimeUnit.MILLISECONDS)
-      _ <- Logger[F].debug(s"get rate for pair = [from = ${pair.from}, to = ${pair.to}], requestTime = [$requestTime]")
+      requestDateTime <- Clock[F].realTime(TimeUnit.MILLISECONDS).map(DateTimeConverters.toDateTimeFormat)
+      _ <- Logger[F].debug(s"Get rate for pair = [$pair], requestTime = [$requestDateTime]")
       ratesCache <- ratesCacheRef.ratesCache.get
       _ <- ratesCache.calls.release
       ratesMap <- ratesCache.ratesMap.get
@@ -30,13 +31,13 @@ class RatesCacheService[F[_]: Concurrent: Clock: Logger](ratesCacheRef: RatesCac
     ratesMap.get(pair) match {
       case Some(rate) =>
         for {
-          _ <- Logger[F].debug(s"find rate = [$rate] for pair = [$pair]")
+          _ <- Logger[F].debug(s"Find rate for pair = [$pair], rate = [$rate]")
           rate <- Right(rate).pure[F]
         } yield rate
       case None =>
         for {
-          _ <- Logger[F].error(s"no such for rate for pair = [$pair]")
-          error <- Left(StateLookupFailed("no such pair")).pure[F]
+          _ <- Logger[F].info(s"No such rate for pair = [$pair]")
+          error <- Left(RatesLookupFailed("No such pair")).pure[F]
         } yield error
     }
   }

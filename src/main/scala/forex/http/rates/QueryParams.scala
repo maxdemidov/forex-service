@@ -11,7 +11,7 @@ object QueryParams {
   private[http] implicit val currencyQueryParam: QueryParamDecoder[Either[String, Currency]] =
     QueryParamDecoder[String].map(str => Try(Currency.fromString(str)) match {
       case Success(currency) => Right(currency)
-      case Failure(t)        => Left(s"Unsupported or incorrect currency [$str]") // todo - add warn log with t.getMessage
+      case Failure(t)        => Left(s"Unsupported or incorrect currency [$str]")
     })
 
   object FromQueryParam extends QueryParamDecoderMatcher[Either[String, Currency]]("from")

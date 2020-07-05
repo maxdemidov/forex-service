@@ -7,6 +7,6 @@ package object services {
 
   type RatesCacheService[F[_]] = cache.Algebra[F]
 
-  type CallsHistoryService[F[_]] = metric.Algebra[F]
-  final val CallsHistoryServices = metric.Interpreters
+  type CallsHistoryService[F[_]] = history.Algebra[F]
+  final val CallsHistoryServices = history.Interpreters
 }

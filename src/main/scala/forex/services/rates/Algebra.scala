@@ -2,8 +2,8 @@ package forex.services.rates
 
 import errors._
 import forex.domain.Rate
-import forex.programs.cache.RatesCacheRef.RatesMap
+import forex.domain.RateTypes.RatesList
 
 trait Algebra[F[_]] {
-  def refresh(pairs: List[Rate.Pair]): F[Error Either RatesMap]
+  def get(pairs: List[Rate.Pair]): F[Error Either RatesList]
 }

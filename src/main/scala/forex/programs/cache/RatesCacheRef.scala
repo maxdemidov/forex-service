@@ -4,14 +4,12 @@ package cache
 import cats.effect.Concurrent
 import cats.effect.concurrent.{Deferred, Ref, Semaphore}
 import cats.implicits._
-import forex.domain.Rate
+import forex.domain.RateTypes.RatesMap
 import forex.programs.cache.RatesCacheRef.RatesCache
 
 case class RatesCacheRef[F[_]](ratesCache: Ref[F, RatesCache[F]])
 
 case object RatesCacheRef {
-
-  type RatesMap = Map[Rate.Pair, Rate]
 
   case class RatesCache[F[_]](cacheUUID: CacheUUID,
                               ratesMap: Deferred[F, RatesMap],

@@ -6,7 +6,7 @@ case class ApplicationConfig(
     http: HttpConfig,
     frame: FrameConfig,
     cache: CacheConfig,
-    metric: MetricConfig
+    history: HistoryConfig
 )
 
 case class HttpConfig(
@@ -27,6 +27,6 @@ case class CacheConfig(
     waitTimeout: FiniteDuration,
 )
 
-case class MetricConfig(
-    metricLiveTimeout: FiniteDuration
+case class HistoryConfig(
+    historyLiveTimeout: FiniteDuration
 )

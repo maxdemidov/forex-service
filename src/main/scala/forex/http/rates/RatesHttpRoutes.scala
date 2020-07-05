@@ -8,11 +8,12 @@ import forex.domain.Currency
 import forex.programs.RatesProgram
 import forex.programs.rates.errors.Error.RateLookupFailed
 import forex.programs.rates.{Protocol => RatesProgramProtocol}
+import io.chrisdavenport.log4cats.Logger
 import org.http4s.{HttpRoutes, Response}
 import org.http4s.dsl.Http4sDsl
 import org.http4s.server.Router
 
-class RatesHttpRoutes[F[_]: Sync](rates: RatesProgram[F]) extends Http4sDsl[F] {
+class RatesHttpRoutes[F[_]: Sync: Logger](rates: RatesProgram[F]) extends Http4sDsl[F] {
 
   import Converters._, QueryParams._, Protocol._
 
@@ -21,8 +22,7 @@ class RatesHttpRoutes[F[_]: Sync](rates: RatesProgram[F]) extends Http4sDsl[F] {
   private val httpRoutes: HttpRoutes[F] = HttpRoutes.of[F] {
 
     // todo:
-    //  extends api with ask bid values - show them by special query param
-    //  add metrics api with call to get list
+    //   extends api with ask bid values - show them by special query param
 
     case GET -> Root :? FromQueryParam(fromE) +& ToQueryParam(toE) =>
 
@@ -33,7 +33,7 @@ class RatesHttpRoutes[F[_]: Sync](rates: RatesProgram[F]) extends Http4sDsl[F] {
 
       params.value.flatMap {
         case Right((from, to)) => getRates(from, to)
-        case Left(msg) => BadRequest(msg)
+        case Left(msg)         => Logger[F].warn(msg).flatMap(_ => BadRequest(msg))
       }
   }
 

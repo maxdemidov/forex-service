@@ -10,6 +10,6 @@ object errors {
   }
 
   def toProgramError(error: RatesServiceError): Error = error match {
-    case RatesServiceError.StateLookupFailed(msg) => Error.RateLookupFailed(msg)
+    case RatesServiceError.RatesLookupFailed(msg) => Error.RateLookupFailed(msg)
   }
 }

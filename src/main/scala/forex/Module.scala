@@ -5,11 +5,13 @@ import forex.config.HttpConfig
 import forex.http.rates.RatesHttpRoutes
 import forex.services._
 import forex.programs._
+import io.chrisdavenport.log4cats.Logger
 import org.http4s._
 import org.http4s.implicits._
 import org.http4s.server.middleware.{AutoSlash, Timeout}
 
-class Module[F[_]: Concurrent: Timer](httpConfig: HttpConfig, ratesCacheService: RatesCacheService[F]) {
+class Module[F[_]: Concurrent: Timer: Logger](httpConfig: HttpConfig,
+                                              ratesCacheService: RatesCacheService[F]) {
 
   private val ratesProgram: RatesProgram[F] = RatesProgram[F](ratesCacheService)
 
