@@ -8,7 +8,7 @@ import cats.implicits._
 import forex.programs.cache.errors.Error
 import forex.programs.cache.errors.Error.{CacheRefreshOneFrameError, CacheRefreshParseResponseFailed, CacheRefreshRequestFailed, CacheRefreshTimeoutExceeded}
 import forex.services.history.RateHistoryCall
-import forex.domain.RateTypes._
+import forex.domain.types.RateTypes._
 import io.chrisdavenport.log4cats.Logger
 
 import scala.concurrent.duration.FiniteDuration

@@ -9,7 +9,7 @@ import errors._
 import forex.common.datetime.DateTimeConverters
 import forex.config.CacheConfig
 import forex.domain.Currency
-import forex.domain.RateTypes.RatesList
+import forex.domain.types.RateTypes.RatesList
 import forex.programs.cache.RatesCacheRef.{CacheUUID, RatesCache}
 import forex.services.{CallsHistoryService, RatesService}
 import forex.programs.cache.errors.Error.CacheRefreshTimeoutExceeded

@@ -5,7 +5,7 @@ import cats.effect.{Async, Concurrent}
 import cats.implicits._
 import forex.common.parser.CommonJsonParser
 import forex.config.FrameConfig
-import forex.domain.RateTypes.RatesList
+import forex.domain.types.RateTypes.RatesList
 import forex.domain.{Currency, Rate}
 import forex.services.rates.errors.Error.{OneFrameError, ParseResponseFailed, RequestFailed}
 import forex.services.rates.frame.Protocol.{FrameError, FrameRate}

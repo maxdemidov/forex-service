@@ -1,8 +1,6 @@
 package forex.programs.rates
 
-import forex.domain.Currency
-//import io.circe.Encoder
-//import io.circe.generic.semiauto.deriveEncoder
+import forex.domain.{Ask, Bid, Currency, Price, Timestamp}
 
 object Protocol {
 
@@ -11,8 +9,12 @@ object Protocol {
       to: Currency
   )
 
-
-//  final case class ErrorResponse(message: String)
-//
-//  implicit val framePairDecoder: Encoder[ErrorResponse] = deriveEncoder[ErrorResponse]
+  final case class GetRatesResponse(
+      from: Currency,
+      to: Currency,
+      bid: Bid,
+      ask: Ask,
+      price: Price,
+      timestamp: Timestamp
+  )
 }

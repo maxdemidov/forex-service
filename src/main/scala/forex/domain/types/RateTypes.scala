@@ -1,10 +1,12 @@
-package forex.domain
+package forex.domain.types
+
+import forex.domain.Rate
 
 import scala.annotation.tailrec
 
 object RateTypes {
 
-  type RatesMap = Map[Rate.Pair, Rate]
+  type RatesMap = Map[Rate.Pair, Rate] // todo - consider to use ConcurrentHashMap
   type RatesList = List[Rate]
 
   val emptyRatesMap: RatesMap = Map[Rate.Pair, Rate]()
