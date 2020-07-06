@@ -1,13 +1,15 @@
-package forex.services.history
+package forex.services.history.interpreters
 
 import cats.Applicative
+import cats.implicits._
 import forex.config.HistoryConfig
+import forex.services.history.Algebra
+import forex.services.history.model.RateHistoryCall
 
 import scala.annotation.tailrec
 import scala.collection.mutable
-import cats.implicits._
 
-class CallsHistoryService[F[_]: Applicative](config: HistoryConfig) extends Algebra[F] {
+class QueueCallsHistoryService[F[_]: Applicative](config: HistoryConfig) extends Algebra[F] {
 
   // todo - auto expired itself, possible other implementation not only as queue
   val callsHistory: mutable.Queue[RateHistoryCall] = mutable.Queue[RateHistoryCall]()

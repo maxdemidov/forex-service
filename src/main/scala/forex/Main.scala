@@ -3,11 +3,8 @@ package forex
 import java.util.concurrent.Executors
 
 import cats.effect._
-import cats.syntax.applicative._
 import forex.config._
-import forex.programs.cache.AutoRefreshedCache
-import forex.services.RatesServices
-import forex.services.CallsHistoryServices
+import forex.programs.cache.CacheState
 import fs2.Stream
 import io.chrisdavenport.log4cats.Logger
 import io.chrisdavenport.log4cats.slf4j.Slf4jLogger
@@ -31,13 +28,9 @@ class Application[F[_]: ConcurrentEffect: Timer: ContextShift: Logger](blockingE
   def stream: Stream[F, Unit] =
     for {
       config <- Config.stream("app")
-      ratesService <- Stream.eval(RatesServices.live[F](config.frame).pure[F])
-      callsHistoryService <- Stream.eval(CallsHistoryServices.queue[F](config.history).pure[F])
-      // todo - create cache service outside of cache object
-      cacheService <- Stream.eval(
-        AutoRefreshedCache.initiate(config.cache, ratesService, callsHistoryService, blockingEC)
-      )
-      module = new Module[F](config.http, cacheService)
+      cacheState <- Stream.eval(CacheState.initial[F])
+      module = new Module[F](config, cacheState, blockingEC)
+      _ <- Stream.eval(module.startAutoRefreshableCache)
       _ <- BlazeServerBuilder[F]
             .bindHttp(config.http.port, config.http.host)
             .withHttpApp(module.httpApp)

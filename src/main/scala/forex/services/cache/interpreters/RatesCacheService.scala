@@ -1,4 +1,4 @@
-package forex.services.cache
+package forex.services.cache.interpreters
 
 import java.util.concurrent.TimeUnit
 
@@ -7,20 +7,20 @@ import cats.implicits._
 import forex.common.datetime.DateTimeConverters
 import forex.domain.Rate
 import forex.domain.types.RateTypes.RatesMap
-import forex.programs.cache.RatesCacheRef
+import forex.programs.CacheProgram
+import forex.services.cache.Algebra
 import forex.services.cache.errors.Error.RatesLookupFailed
 import forex.services.cache.errors._
 import io.chrisdavenport.log4cats.Logger
 
-// todo - consider to move it to cache package
-class RatesCacheService[F[_]: Concurrent: Clock: Logger](ratesCacheRef: RatesCacheRef[F]) extends Algebra[F] {
+class RatesCacheService[F[_]: Concurrent: Clock: Logger](cacheProgram: CacheProgram[F]) extends Algebra[F] {
 
   // todo - make one instead of two - only for list
   def get(pair: Rate.Pair): F[Error Either Rate] = {
     for {
       requestDateTime <- Clock[F].realTime(TimeUnit.MILLISECONDS).map(DateTimeConverters.toDateTimeFormat)
       _ <- Logger[F].debug(s"Get rate for pair = [$pair], requestTime = [$requestDateTime]")
-      ratesMap <- obtainMap
+      ratesMap <- cacheProgram.obtainCachedMap
       rate <- getRateFromMap(pair, ratesMap)
     } yield rate
   }
@@ -29,17 +29,9 @@ class RatesCacheService[F[_]: Concurrent: Clock: Logger](ratesCacheRef: RatesCac
     for {
       requestDateTime <- Clock[F].realTime(TimeUnit.MILLISECONDS).map(DateTimeConverters.toDateTimeFormat)
       _ <- Logger[F].debug(s"Get rate for pairs = [$pairs], requestTime = [$requestDateTime]")
-      ratesMap <- obtainMap
+      ratesMap <- cacheProgram.obtainCachedMap
       rate <- getRatesFromMap(pairs, ratesMap)
     } yield rate
-  }
-
-  def obtainMap: F[RatesMap] = {
-    for {
-      ratesCache <- ratesCacheRef.ratesCache.get
-      _ <- ratesCache.calls.release
-      ratesMap <- ratesCache.ratesMap.get
-    } yield ratesMap
   }
 
   private def getRatesFromMap(pairs: List[Rate.Pair],

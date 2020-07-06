@@ -1,19 +1,32 @@
 package forex
 
-import cats.effect.{Concurrent, Timer}
-import forex.config.HttpConfig
+import cats.effect.{Concurrent, ContextShift, Timer}
+import forex.config.ApplicationConfig
 import forex.http.rates.RatesHttpRoutes
 import forex.services._
 import forex.programs._
+import forex.programs.cache.CacheState
 import io.chrisdavenport.log4cats.Logger
 import org.http4s._
 import org.http4s.implicits._
 import org.http4s.server.middleware.{AutoSlash, Timeout}
 
-class Module[F[_]: Concurrent: Timer: Logger](httpConfig: HttpConfig,
-                                              ratesCacheService: RatesCacheService[F]) {
+import scala.concurrent.ExecutionContextExecutor
 
-  private val ratesProgram: RatesProgram[F] = RatesProgram[F](ratesCacheService)
+class Module[F[_]: Concurrent: ContextShift: Timer: Logger](config: ApplicationConfig,
+                                                            cacheState: CacheState[F],
+                                                            blockingEC: ExecutionContextExecutor) {
+
+  private val ratesService: RatesService[F] = RatesServices.live[F](config.frame)
+  private val historyService: CallsHistoryService[F] = CallsHistoryServices.queue[F](config.history)
+
+  private val cacheProgram: CacheProgram[F] =
+    CacheProgram[F](config.cache, ratesService, historyService, cacheState, blockingEC)
+
+  private val ratesCacheService: RatesCacheService[F] = CacheRatesServices.live(cacheProgram)
+
+  private val ratesProgram: RatesProgram[F] =
+    RatesProgram[F](ratesCacheService)
 
   private val ratesHttpRoutes: HttpRoutes[F] = new RatesHttpRoutes[F](ratesProgram).routes
 
@@ -27,10 +40,12 @@ class Module[F[_]: Concurrent: Timer: Logger](httpConfig: HttpConfig,
   }
 
   private val appMiddleware: TotalMiddleware = { http: HttpApp[F] =>
-    Timeout(httpConfig.requestTimeout)(http)
+    Timeout(config.http.requestTimeout)(http)
   }
 
   private val http: HttpRoutes[F] = ratesHttpRoutes
 
   val httpApp: HttpApp[F] = appMiddleware(routesMiddleware(http).orNotFound)
+
+  val startAutoRefreshableCache: F[Unit] = cacheProgram.startAutoRefreshableCache()
 }

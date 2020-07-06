@@ -50,7 +50,7 @@ class RatesHttpRoutes[F[_]: Sync: Logger](rates: RatesProgram[F]) extends Http4s
     prefixPath -> httpRoutes
   )
 
-  // todo - make one for list
+  // todo - make one (for list)
   private def getRate(request: GetApiRequest): F[Response[F]] = {
     rates.get(request.asGetRatesRequest).flatMap {
       case Right(rate)                 => Ok(rate.asGetApiResponse)

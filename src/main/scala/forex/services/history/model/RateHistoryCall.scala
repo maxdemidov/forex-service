@@ -1,4 +1,4 @@
-package forex.services.history
+package forex.services.history.model
 
 import forex.domain.Rate
 

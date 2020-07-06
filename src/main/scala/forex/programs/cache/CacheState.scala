@@ -2,14 +2,17 @@ package forex.programs
 package cache
 
 import cats.effect.Concurrent
-import cats.effect.concurrent.{Deferred, Ref, Semaphore}
+import cats.effect.concurrent.{Deferred, MVar, Ref, Semaphore}
 import cats.implicits._
 import forex.domain.types.RateTypes.RatesMap
-import forex.programs.cache.RatesCacheRef.RatesCache
+import forex.programs.cache.CacheState.RatesCache
 
-case class RatesCacheRef[F[_]](ratesCache: Ref[F, RatesCache[F]])
+import scala.concurrent.duration.FiniteDuration
 
-case object RatesCacheRef {
+case class CacheState[F[_]](ratesCache: Ref[F, RatesCache[F]],
+                            nextRefreshDuration: MVar[F, FiniteDuration])
+
+case object CacheState {
 
   case class RatesCache[F[_]](cacheUUID: CacheUUID,
                               ratesMap: Deferred[F, RatesMap],
@@ -31,11 +34,12 @@ case object RatesCacheRef {
       CacheUUID(java.util.UUID.randomUUID())
   }
 
-  private[cache] def initial[F[_]: Concurrent]: F[RatesCacheRef[F]] = {
+  def initial[F[_]: Concurrent]: F[CacheState[F]] = {
     for {
       newRateCache <- RatesCache.empty
       ratesCacheRef <- Ref[F].of(newRateCache)
-      cache <- RatesCacheRef(ratesCacheRef).pure[F]
+      nextRefreshDuration <- MVar[F].empty[FiniteDuration]
+      cache <- CacheState(ratesCacheRef, nextRefreshDuration).pure[F]
     } yield cache
   }
 }

@@ -17,7 +17,7 @@ class Program[F[_]: Functor : Concurrent: Timer](ratesCacheService: RatesCacheSe
       .leftMap(toProgramError).map(_.asGetRatesResponse).value
 
   override def get(requests: List[Protocol.GetRatesRequest]): F[List[Error] Either List[GetRatesResponse]] = {
-    // todo - better
+    // todo - ? better
     ratesCacheService.get(requests.map(_.asPair)).map(list => {
       val lefts = list.flatMap(_.left.toOption)
       val rights = list.flatMap(_.right.toOption)
