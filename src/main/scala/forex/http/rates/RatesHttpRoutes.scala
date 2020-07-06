@@ -29,9 +29,8 @@ class RatesHttpRoutes[F[_]: Sync: Logger](rates: RatesProgram[F]) extends Http4s
         to <- EitherT.fromEither(toE)
       } yield GetApiRequest(from, to)
       params.value.flatMap {
-        case Right(request) => getRate(request)
-        case Left(msg) =>
-          Logger[F].warn(msg).flatMap(_ => BadRequest(msg))
+        case Right(request) => getRates(List(request))(isSingle = true)
+        case Left(msg)      => getBadRequest(msg)
       }
 
     case GET -> Root :? PairQueryParam(pairsE) =>
@@ -40,14 +39,10 @@ class RatesHttpRoutes[F[_]: Sync: Logger](rates: RatesProgram[F]) extends Http4s
           val lefts = list.flatMap(_.left.toOption)
           val rights = list.flatMap(_.right.toOption)
           (lefts, rights) match {
-            case (Nil, pairs) => getRates(pairs.distinct)
-            case (errors, _)  =>
-              val msg = errors.reduce(_ + "\n\r" + _)
-              Logger[F].warn(msg).flatMap(_ => BadRequest(msg))
+            case (Nil, pairs) => getRates(pairs.distinct)(isSingle = false)
+            case (errors, _)  => getBadRequest(errors.reduce(_ + "\n\r" + _))
           }
-        case Left(nel) =>
-          val msg = nel.map(_.message).toList.reduce(_ + "\n\r" + _)
-          Logger[F].warn(msg).flatMap(_ => BadRequest(msg))
+        case Left(nel) => getBadRequest(nel.map(_.message).toList.reduce(_ + "\n\r" + _))
       }
   }
 
@@ -55,22 +50,24 @@ class RatesHttpRoutes[F[_]: Sync: Logger](rates: RatesProgram[F]) extends Http4s
     prefixPath -> httpRoutes
   )
 
-  // todo - generalize, consider to use OptionT
-  private def getRate(request: GetApiRequest): F[Response[F]] = {
-    rates.get(request.asGetRatesRequest).flatMap {
-      case Right(rate)                 => Ok(rate.asGetApiResponse)
-      case Left(RateNotFound(msg))     => NotFound(msg)
+  private def getRates(pairs: List[GetApiRequest])(isSingle: Boolean): F[Response[F]] = {
+    rates.get(pairs.map(_.asGetRatesRequest)).flatMap {
+
+      case Right(Nil) => InternalServerError(Messages.emptyResponseFor(pairs))
+      case Right(rates) =>
+        if (isSingle) Ok(rates.head.asGetApiResponse) else Ok(rates.map(_.asGetApiResponse))
+
+      case Left(RateNotFound(msg)) => NotFound(msg)
       case Left(RateInvalidFound(msg)) =>
         Logger[F].warn(msg).flatMap(_ => InternalServerError(msg))
     }
   }
 
-  private def getRates(pairs: List[GetApiRequest]): F[Response[F]] = {
-    rates.get(pairs.map(_.asGetRatesRequest)).flatMap {
-      case Right(rates)                => Ok(rates.map(_.asGetApiResponse))
-      case Left(RateNotFound(msg))     => NotFound(msg)
-      case Left(RateInvalidFound(msg)) =>
-        Logger[F].warn(msg).flatMap(_ => InternalServerError(msg))
-    }
+  private def getBadRequest(msg: String) = {
+    Logger[F].warn(msg).flatMap(_ => BadRequest(msg))
+  }
+
+  private object Messages {
+    def emptyResponseFor(pairs: List[GetApiRequest]) = s"Inconsistant empty response for pairs = [$pairs]"
   }
 }

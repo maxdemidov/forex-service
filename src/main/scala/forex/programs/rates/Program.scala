@@ -8,12 +8,7 @@ import forex.programs.rates.Protocol.GetRatesResponse
 import forex.services.RatesCacheService
 
 class Program[F[_]: Functor : Concurrent: Timer](ratesCacheService: RatesCacheService[F]) extends Algebra[F] {
-
   import Converters._
-
-  override def get(request: Protocol.GetRatesRequest): F[Error Either GetRatesResponse] =
-    EitherT(ratesCacheService.get(request.asPair))
-      .map(_.asGetRatesResponse).leftMap(toProgramError).value
 
   override def get(requests: List[Protocol.GetRatesRequest]): F[Error Either List[GetRatesResponse]] =
     EitherT(ratesCacheService.get(requests.map(_.asPair)))

@@ -8,7 +8,5 @@ import io.chrisdavenport.log4cats.Logger
 
 class RatesDirectService[F[_]: Concurrent: Clock: Logger](ratesService: RatesService[F]) extends Algebra[F] {
 
-  override def get(pair: Rate.Pair): F[errors.Error Either Rate] = ???
-
   override def get(pairs: List[Rate.Pair]): F[errors.Error Either List[Rate]] = ???
 }
