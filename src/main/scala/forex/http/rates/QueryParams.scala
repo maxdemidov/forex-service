@@ -10,13 +10,10 @@ import scala.util.{Failure, Success, Try}
 
 object QueryParams {
 
-  def invalidCurrency(str: String) = s"Unsupported or incorrect currency [$str]"
-  def invalidPair(str: String) = s"Wrong pair [$str], for example expected format for pair from USD to JPY should be USDJPY"
-
   private[http] implicit val currencyQueryParam: QueryParamDecoder[Either[String, Currency]] =
     QueryParamDecoder[String].map(str => Try(Currency.fromString(str)) match {
       case Success(currency) => Right(currency)
-      case Failure(_)        => Left(invalidCurrency(str))
+      case Failure(_)        => Left(Messages.invalidCurrency(str))
     })
 
   object FromQueryParam extends QueryParamDecoderMatcher[Either[String, Currency]]("from")
@@ -28,13 +25,22 @@ object QueryParams {
         str.sliding(3, 3).toList
           .map(str => Try(Currency.fromString(str)) match {
             case Success(currency) => Right(currency)
-            case Failure(_)        => Left(invalidCurrency(str))
+            case Failure(_)        => Left(Messages.invalidCurrency(str))
           })
           .traverse(_.toValidated).toEither
           .map(ft => GetApiRequest(ft.head, ft.tail.head))
       } else {
-        Left(invalidPair(str))
+        Left(Messages.invalidPair(str))
       })
 
   object PairQueryParam extends OptionalMultiQueryParamDecoderMatcher[Either[String, GetApiRequest]]("pair")
+
+  object Messages {
+
+    def invalidCurrency(str: String) =
+      s"Unsupported or incorrect currency [$str]"
+
+    def invalidPair(str: String) =
+      s"Wrong pair [$str], for example expected format for pair from USD to JPY should be USDJPY"
+  }
 }

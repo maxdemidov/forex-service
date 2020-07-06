@@ -23,7 +23,7 @@ class Module[F[_]: Concurrent: ContextShift: Timer: Logger](config: ApplicationC
   private val cacheProgram: CacheProgram[F] =
     CacheProgram[F](config.cache, ratesService, historyService, cacheState, blockingEC)
 
-  private val ratesCacheService: RatesCacheService[F] = CacheRatesServices.live(cacheProgram)
+  private val ratesCacheService: RatesCacheService[F] = CacheRatesServices.cached(cacheProgram)
 
   private val ratesProgram: RatesProgram[F] =
     RatesProgram[F](ratesCacheService)

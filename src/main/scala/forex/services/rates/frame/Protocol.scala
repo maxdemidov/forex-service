@@ -43,7 +43,7 @@ object Protocol {
   implicit val frameErrorDecoder: Decoder[FrameError] = deriveDecoder[FrameError]
 
 
-  val formatter: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'") // todo - there some problems in case .1Z at the end
+  val formatter: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'") // todo - there is some problems in case .1Z at the end
   def parseToEither(str: String): Either[String, LocalDateTime] =
     Try(LocalDateTime.parse(str, formatter)) match {
       case Success(ldt) => Right(ldt)
