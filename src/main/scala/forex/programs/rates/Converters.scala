@@ -4,8 +4,8 @@ import forex.domain.Rate
 import forex.programs.rates.Protocol.{GetRatesRequest, GetRatesResponse}
 
 object Converters {
-
-  private[rates] implicit class GetRatesResponseOps(val rate: Rate) extends AnyVal {
+  // todo - private[rates]
+  implicit class GetRatesResponseOps(val rate: Rate) extends AnyVal {
     def asGetRatesResponse: GetRatesResponse =
       GetRatesResponse(
         from = rate.pair.from,

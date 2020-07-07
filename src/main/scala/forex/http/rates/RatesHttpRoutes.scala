@@ -53,13 +53,13 @@ class RatesHttpRoutes[F[_]: Sync: Logger](rates: RatesProgram[F]) extends Http4s
   private def getRates(pairs: List[GetApiRequest])(isSingle: Boolean): F[Response[F]] = {
     rates.get(pairs.map(_.asGetRatesRequest)).flatMap {
 
-      case Right(Nil) => InternalServerError(Messages.emptyResponseFor(pairs))
-      case Right(rates) =>
-        if (isSingle) Ok(rates.head.asGetApiResponse) else Ok(rates.map(_.asGetApiResponse))
+      case Right(Nil) if isSingle   => InternalServerError(Messages.emptyResponseFor(pairs))
+      case Right(Nil)               => Ok(List[GetApiResponse]())
+      case Right(rates) if isSingle => Ok(rates.head.asGetApiResponse)
+      case Right(rates)             => Ok(rates.map(_.asGetApiResponse))
 
-      case Left(RateNotFound(msg)) => NotFound(msg)
-      case Left(RateInvalidFound(msg)) =>
-        Logger[F].warn(msg).flatMap(_ => InternalServerError(msg))
+      case Left(RateNotFound(msg))     => NotFound(msg)
+      case Left(RateInvalidFound(msg)) => Logger[F].warn(msg).flatMap(_ => InternalServerError(msg))
     }
   }
 

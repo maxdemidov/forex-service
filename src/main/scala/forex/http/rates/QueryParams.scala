@@ -35,7 +35,7 @@ object QueryParams {
 
   object PairQueryParam extends OptionalMultiQueryParamDecoderMatcher[Either[String, GetApiRequest]]("pair")
 
-  private object Messages {
+  object Messages {
 
     def invalidCurrency(str: String) =
       s"Unsupported or incorrect currency [$str]"

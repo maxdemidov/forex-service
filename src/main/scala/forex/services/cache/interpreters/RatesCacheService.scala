@@ -7,7 +7,7 @@ import cats.data.EitherT
 import cats.effect.{Clock, Concurrent}
 import cats.implicits._
 import forex.common.datetime.DateTimeConverters
-import forex.domain.{Price, Rate}
+import forex.domain.Rate
 import forex.domain.types.RateTypes.RatesMap
 import forex.programs.CacheProgram
 import forex.services.cache.Algebra
@@ -52,11 +52,7 @@ class RatesCacheService[F[_]: Applicative: Concurrent: Clock: Logger](cacheProgr
     pairs.traverse(pair => EitherT(getRateFromMap(pair, ratesMap))).value
   }
 
-  private def isValid(rate: Rate) = !Price.isEmpty(rate.price)
-
-  private object Messages {
-    def invalidRateMessage(pair: Rate.Pair, rate: Rate) = s"Found invalid rate for pair = [$pair], rate = [$rate]"
-    def foundRateMessage(pair: Rate.Pair, rate: Rate) = s"Found rate for pair = [$pair], rate = [$rate]"
-    def notFoundRateMessage(pair: Rate.Pair) = s"No found rate for pair = [$pair]"
+  private def isValid(rate: Rate) = {
+    (rate.price.value > 0) && (rate.bid.value > 0) && (rate.ask.value > 0)
   }
 }
