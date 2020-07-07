@@ -8,8 +8,6 @@ import io.chrisdavenport.log4cats.Logger
 
 object Interpreters {
 
-  def dummy[F[_]: Applicative](): Algebra[F] = new OneFrameDummy[F]()
-
   def live[F[_]: Applicative: Concurrent: Logger](config: FrameConfig): Algebra[F] =
     new OneFrameLive[F](config)
 }

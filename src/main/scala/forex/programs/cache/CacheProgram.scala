@@ -53,7 +53,9 @@ class CacheProgram[F[_]: Concurrent: Timer: ContextShift: Logger](cacheConfig: C
           ratesMap <- ContextShift[F].shift *> performRetryRefreshCall()
           newRateCache <- RatesCache.empty
           _ <- newRateCache.ratesMap.complete(ratesMap)
+          oldRateCache <- cacheState.ratesCache.get
           _ <- showLastCount() *> cacheState.ratesCache.set(newRateCache)
+          _ <- Concurrent[F].start(oldRateCache.ratesMap.complete(ratesMap).attempt)
         } yield newRateCache
       } else {
         for {
@@ -65,9 +67,9 @@ class CacheProgram[F[_]: Concurrent: Timer: ContextShift: Logger](cacheConfig: C
           _ <- newRateCache.calls.release
         } yield newRateCache
       }
-      _ <- ContextShift[F].shift *> scheduleNextClean(cacheConfig.expirationTimeout, newRateCache.cacheUUID)
+      _ <- Concurrent[F].start(scheduleNextClean(cacheConfig.expirationTimeout, newRateCache.cacheUUID))
       _ <- cacheState.nextRefreshDuration.tryTake
-      _ <- ContextShift[F].shift *> scheduleNextRefresh(cacheConfig.refreshTimeout)
+      _ <- Concurrent[F].start(scheduleNextRefresh(cacheConfig.refreshTimeout))
     } yield ()
 
   private def showLastCount()(implicit cacheState: CacheState[F]): F[Unit] = {

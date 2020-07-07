@@ -31,7 +31,7 @@ class HttpApiGetRateEndpointTest extends AnyFunSuite with CommonJsonParser {
   implicit val logger: Logger[IO] = Slf4jLogger.getLogger
 
   val mainEC: ExecutionContextExecutor =
-    ExecutionContext.fromExecutor(Executors.newFixedThreadPool(3))
+    ExecutionContext.fromExecutor(Executors.newFixedThreadPool(1))
   implicit def contextShift: ContextShift[IO] = IO.contextShift(mainEC)
   implicit def timer: Timer[IO] = IO.timer(mainEC)
 
