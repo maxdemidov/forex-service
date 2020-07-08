@@ -10,7 +10,9 @@ About implementation:
  - But on the other way we may refresh those rates for nobody, so it also nice to have some mechanism that checks activity and switch from eager autorefresh to lazy - that sleeps and starts to call frame API only by demand. 
  - So we can switch cache from lazy, for example at night, to eager refresh mode in case of continuous activity were performed during the day.
  - The other concern which is nice to handle is some retry flow in case we can't get rates from the frame or get an error.
-This is how it's done.
+#
+This is my vision to implement this service and this is how it's done.
+Now I cover a little technical details. 
 #
 About API:
  - I extended API with bid and ask fields, and create an endpoint to get a list of rates by list of pairs in one-frame's API manner.
