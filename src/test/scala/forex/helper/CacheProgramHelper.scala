@@ -24,7 +24,9 @@ object CacheProgramHelper {
 
   trait ModifiedCache[F[_]] extends RatesAlgebra[F] {
     def modifyRates(list: List[Rate]): F[Unit]
+    def modifySleep(duration: FiniteDuration): F[Unit]
   }
+
   case class CacheEnv[F[_]: Sync, A <: ModifiedCache[F]](cacheService: CacheAlgebra[F],
                                                          ratesService: A,
                                                          counter: Ref[F, Int])
@@ -62,37 +64,26 @@ object CacheProgramHelper {
     } yield cacheService
   }
 
-  class OneFrameModifiedWithCounter[F[_]: Applicative: Concurrent](counter: Ref[F, Int],
-                                                                   rates: Ref[F, List[Rate]]) extends ModifiedCache[F] {
+  class OneFrameModified[F[_]: Applicative: Concurrent: Timer: Logger](counter: Ref[F, Int],
+                                                                       rates: Ref[F, List[Rate]],
+                                                                       sleep: Ref[F, FiniteDuration]) extends ModifiedCache[F] {
 
     override def get(pairs: List[Rate.Pair]): F[Error Either RatesList] = {
       for {
-        _ <- counter.getAndUpdate(_ + 1)
+        _ <- Logger[F].info("OneFrameModified - frame touched")
+        duration <- sleep.get
+        _ <- Timer[F].sleep(duration)
+        count <- counter.getAndUpdate(_ + 1)
         rates <- rates.get
         res <- rates.asRight[Error].pure[F]
+        _ <- Logger[F].info(s"OneFrameModified - frame counter increased up to [$count]")
       } yield res
     }
 
-    override def modifyRates(list: List[Rate]): F[Unit] = {
-      for {
-        _ <- rates.getAndUpdate(_ => list)
-      } yield ()
-    }
-  }
+    override def modifyRates(list: List[Rate]): F[Unit] =
+      for { _ <- rates.getAndUpdate(_ => list)} yield ()
 
-  class OneFrameWaitWithCounter[F[_]: Applicative: Concurrent: Timer](counter: Ref[F, Int],
-                                                                      rates: List[Rate],
-                                                                      timeoutToResponse: FiniteDuration) extends ModifiedCache[F] {
-    override def get(pairs: List[Rate.Pair]): F[Error Either RatesList] = {
-      for {
-        _ <- Timer[F].sleep(timeoutToResponse)
-        _ <- counter.getAndUpdate(_ + 1)
-        res <- rates.asRight[Error].pure[F]
-      } yield res
-    }
-
-    override def modifyRates(list: List[Rate]): F[Unit] = {
-      throw new NotImplementedError("unimplemented")
-    }
+    override def modifySleep(duration: FiniteDuration): F[Unit] =
+      for {_ <- sleep.getAndUpdate(_ => duration) } yield ()
   }
 }

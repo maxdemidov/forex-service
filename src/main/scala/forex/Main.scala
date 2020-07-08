@@ -28,6 +28,7 @@ class Application[F[_]: ConcurrentEffect: Timer: ContextShift: Logger](blockingE
   def stream: Stream[F, Unit] =
     for {
       config <- Config.stream("app")
+      // todo - check that expiration timeout grater then refresh timeout and wait less or equals then difference between them
       cacheState <- Stream.eval(CacheState.initial[F])
       module = new Module[F](config, cacheState, blockingEC)
       _ <- Stream.eval(module.startAutoRefreshableCache)

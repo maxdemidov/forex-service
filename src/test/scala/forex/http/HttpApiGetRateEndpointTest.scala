@@ -45,6 +45,8 @@ class HttpApiGetRateEndpointTest extends AnyFunSuite with CommonJsonParser {
   val rateUSDJPY: Rate =
     Rate(pairUSDJPY, Bid(BigDecimal(0.9)), Ask(BigDecimal(0.5)), Price(BigDecimal(0)), Timestamp.now)
 
+  // todo - move all assert under for or create common method with for
+
   test("get rate - successful case") {
     val uriStr = s"/rates/rate?from=${pairUSDEUR.from}&to=${pairUSDEUR.to}"
     val ratesHttpRoutes = HttpRouteTestHelper.getRoute[IO](new RatesCacheServiceOne[IO](rateUSDEUR))

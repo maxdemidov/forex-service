@@ -50,6 +50,8 @@ class HttpApiGetRatesEndpointTest extends AnyFunSuite with CommonJsonParser {
 
   val allPairs = List(rateUSDEUR, rateUSDAUD, rateUSDJPY)
 
+  // todo - move all assert under for or create common method with for
+
   test("get rates - successful case for one pair") {
     val fromto = pairUSDEUR.from.toString + pairUSDEUR.to.toString
     val uriStr = s"/rates?pair=${fromto}"

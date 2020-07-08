@@ -35,6 +35,7 @@ class OneFrameLive[F[_]: Applicative: Concurrent: Logger](config: FrameConfig) e
     } yield res
   }
 
+  // todo - consider to use other library
   private def allRatesRequest(): Either[Error, RatesList] = {
     import forex.services.rates.frame.Converters._
     val allPairs = Currency.allPairs.map(p => s"pair=${p.from}${p.to}").reduce(_ + "&" + _)
